@@ -41,10 +41,11 @@ class SRTGenerator:
             start_str = self.format_timestamp(start_time)
             end_str = self.format_timestamp(end_time)
 
-            srt_lines.append(f"{index}")
-            srt_lines.append(f"{start_str} --> {end_str}")
-            srt_lines.append(text)
-            srt_lines.append("")
+            if text:
+                srt_lines.append(f"{index}")
+                srt_lines.append(f"{start_str} --> {end_str}")
+                srt_lines.append(text)
+                srt_lines.append("")
 
         return "\n".join(srt_lines)
 

@@ -94,7 +94,7 @@ Hello world
 
         result = generator.generate_srt(segments)
 
-        assert "1\n00:00:00,000 --> 00:00:01,000\n\n" in result
+        assert result == ""
 
     def test_generate_srt_whitespace_in_text(self):
         generator = SRTGenerator()

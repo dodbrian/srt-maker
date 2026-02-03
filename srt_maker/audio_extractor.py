@@ -1,5 +1,4 @@
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Optional
 import logging
@@ -37,7 +36,7 @@ class AudioExtractor:
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
             logger.info(f"Audio extracted successfully to {output_path}")
             return output_path
         except subprocess.CalledProcessError as e:
@@ -45,6 +44,6 @@ class AudioExtractor:
             raise RuntimeError(f"Failed to extract audio from {video_path}: {e.stderr}")
         except FileNotFoundError:
             raise RuntimeError(
-                f"ffmpeg not found. Please install ffmpeg: "
+                "ffmpeg not found. Please install ffmpeg: "
                 "https://ffmpeg.org/download.html"
             )
