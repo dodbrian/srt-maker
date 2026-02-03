@@ -66,6 +66,13 @@ def parse_args(argv=None):
     )
 
     parser.add_argument(
+        "--offset",
+        type=float,
+        default=0.0,
+        help="Time offset in seconds to add to all timestamps (default: 0.0)",
+    )
+
+    parser.add_argument(
         "-d",
         "--device",
         choices=["cpu", "cuda", "auto"],
@@ -141,7 +148,7 @@ def main():
             )
 
             srt_generator = SRTGenerator(timestamp_precision=args.precision)
-            srt_generator.write_srt(segments, output_path)
+            srt_generator.write_srt(segments, output_path, time_offset=args.offset)
 
             progress.update(generate_task, completed=True)
 

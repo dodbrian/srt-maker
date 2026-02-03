@@ -55,7 +55,7 @@ class Transcriber:
         logger.info(f"Transcribing audio from {audio_path}")
 
         result = self.model.transcribe(
-            audio_path, language=self.language, word_timestamps=False
+            audio_path, language=self.language, word_timestamps=True
         )
 
         detected_lang = result.get("language", "unknown")

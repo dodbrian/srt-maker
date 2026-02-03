@@ -25,15 +25,17 @@ class SRTGenerator:
 
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms_str}"
 
-    def generate_srt(self, segments: List[Dict[str, Any]]) -> str:
+    def generate_srt(
+        self, segments: List[Dict[str, Any]], time_offset: float = 0.0
+    ) -> str:
         if not segments:
             return ""
 
         srt_lines = []
 
         for index, segment in enumerate(segments, start=1):
-            start_time = segment.get("start", 0.0)
-            end_time = segment.get("end", 0.0)
+            start_time = max(0.0, segment.get("start", 0.0) + time_offset)
+            end_time = max(0.0, segment.get("end", 0.0) + time_offset)
             text = segment.get("text", "").strip()
 
             start_str = self.format_timestamp(start_time)
@@ -46,8 +48,10 @@ class SRTGenerator:
 
         return "\n".join(srt_lines)
 
-    def write_srt(self, segments: List[Dict[str, Any]], output_path: str):
-        srt_content = self.generate_srt(segments)
+    def write_srt(
+        self, segments: List[Dict[str, Any]], output_path: str, time_offset: float = 0.0
+    ):
+        srt_content = self.generate_srt(segments, time_offset)
 
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(srt_content)

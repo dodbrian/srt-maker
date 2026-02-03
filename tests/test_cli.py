@@ -16,6 +16,7 @@ class TestCLI:
         assert args.model == "base"
         assert args.language is None
         assert args.precision == 0
+        assert args.offset == 0.0
         assert args.device is None
         assert args.verbose is False
 
@@ -31,6 +32,8 @@ class TestCLI:
                 "en",
                 "-p",
                 "100",
+                "--offset",
+                "1.5",
                 "-d",
                 "cpu",
                 "-v",
@@ -42,6 +45,7 @@ class TestCLI:
         assert args.model == "tiny"
         assert args.language == "en"
         assert args.precision == 100
+        assert args.offset == 1.5
         assert args.device == "cpu"
         assert args.verbose is True
 
