@@ -2,7 +2,6 @@ import argparse
 import sys
 import logging
 from pathlib import Path
-from typing import Optional
 
 from rich.console import Console
 from rich.progress import (
@@ -84,6 +83,12 @@ def parse_args(argv=None):
 def main():
     args = parse_args()
     setup_logging(args.verbose)
+
+    gpu_detected = Transcriber.detect_gpu()
+    if gpu_detected:
+        console.print("[green]✓ GPU (CUDA) detected[/green]")
+    else:
+        console.print("[yellow]⚠ No GPU detected, using CPU[/yellow]")
 
     video_path = Path(args.video_file)
 

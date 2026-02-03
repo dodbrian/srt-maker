@@ -6,6 +6,10 @@ from srt_maker.transcriber import Transcriber
 
 
 class TestTranscriber:
+    def test_detect_gpu_returns_bool(self):
+        result = Transcriber.detect_gpu()
+        assert isinstance(result, bool)
+
     def test_init_valid_model_size(self):
         for size in Transcriber.MODEL_SIZES:
             transcriber = Transcriber(model_size=size)

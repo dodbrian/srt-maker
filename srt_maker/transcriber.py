@@ -34,6 +34,15 @@ class Transcriber:
         self.device = device
         self.model: Optional[Any] = None
 
+    @staticmethod
+    def detect_gpu() -> bool:
+        try:
+            import torch
+
+            return torch.cuda.is_available()
+        except (ImportError, RuntimeError):
+            return False
+
     def load_model(self):
         logger.info(f"Loading Whisper model '{self.model_size}'...")
         self.model = whisper.load_model(self.model_size, device=self.device)
