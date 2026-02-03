@@ -115,3 +115,32 @@ class TestTranscriber:
         assert len(segments) == 2
         assert segments[0]["text"] == "First"
         assert segments[1]["text"] == "Second"
+
+    @patch("srt_maker.transcriber.whisper.load_model")
+    def test_transcribe_preserves_user_language(self, mock_load_model):
+        """Test that user-specified language is preserved even when Whisper detects a different language"""
+        mock_model = MagicMock()
+        # Simulate Whisper detecting English but user specified German
+        mock_model.transcribe.return_value = {"segments": [], "language": "en"}
+        mock_load_model.return_value = mock_model
+
+        transcriber = Transcriber(model_size="base", language="de")
+        result = transcriber.transcribe("test_audio.wav")
+
+        # User specified 'de', so it should remain 'de' even though Whisper detected 'en'
+        assert transcriber.language == "de"
+        assert result["language"] == "en"  # Result still contains what Whisper detected
+
+    @patch("srt_maker.transcriber.whisper.load_model")
+    def test_transcribe_updates_language_when_not_specified(self, mock_load_model):
+        """Test that detected language is stored when user didn't specify one"""
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = {"segments": [], "language": "ja"}
+        mock_load_model.return_value = mock_model
+
+        transcriber = Transcriber(model_size="base", language=None)
+        result = transcriber.transcribe("test_audio.wav")
+
+        # No language specified, so it should be updated with detected language
+        assert transcriber.language == "ja"
+        assert result["language"] == "ja"

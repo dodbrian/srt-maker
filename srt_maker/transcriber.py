@@ -53,15 +53,33 @@ class Transcriber:
             self.load_model()
 
         logger.info(f"Transcribing audio from {audio_path}")
+        if self.language:
+            logger.info(f"Using specified language: {self.language}")
 
+        # Reduce repetitions and hallucinations
+        # temperature=0.0 for deterministic, consistent results
+        # compression_ratio_threshold=2.4 filters out repetitive segments
+        # condition_on_previous_text=False prevents context-based repetitions
         result = self.model.transcribe(
-            audio_path, language=self.language, word_timestamps=True
+            audio_path,
+            language=self.language,
+            word_timestamps=True,
+            temperature=0.0,
+            compression_ratio_threshold=2.4,
+            logprob_threshold=-1.0,
+            no_speech_threshold=0.6,
+            condition_on_previous_text=False,
         )
 
         detected_lang = result.get("language", "unknown")
-        self.language = detected_lang
-
-        logger.info(f"Transcription complete. Detected language: {detected_lang}")
+        # Only update language if user didn't specify one
+        if self.language is None:
+            self.language = detected_lang
+            logger.info(f"Transcription complete. Detected language: {detected_lang}")
+        else:
+            logger.info(
+                f"Transcription complete. Used language: {self.language} (detected: {detected_lang})"
+            )
 
         return result
 
