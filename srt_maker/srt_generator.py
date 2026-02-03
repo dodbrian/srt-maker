@@ -5,8 +5,9 @@ logger = logging.getLogger(__name__)
 
 
 class SRTGenerator:
-    def __init__(self, timestamp_precision: int = 0):
+    def __init__(self, timestamp_precision: int = 0, min_display_duration: float = 0.0):
         self.timestamp_precision = timestamp_precision
+        self.min_display_duration = min_display_duration
 
     def format_timestamp(self, seconds: float) -> str:
         total_seconds = seconds
@@ -37,6 +38,20 @@ class SRTGenerator:
             start_time = max(0.0, segment.get("start", 0.0) + time_offset)
             end_time = max(0.0, segment.get("end", 0.0) + time_offset)
             text = segment.get("text", "").strip()
+
+            # Apply minimum display duration
+            if self.min_display_duration > 0.0:
+                desired_end = start_time + self.min_display_duration
+
+                # Cap at the start of the next segment to avoid overlap
+                if index < len(segments):
+                    next_start = max(
+                        0.0, segments[index].get("start", 0.0) + time_offset
+                    )
+                    end_time = max(end_time, min(desired_end, next_start))
+                else:
+                    # Last segment can extend freely
+                    end_time = max(end_time, desired_end)
 
             start_str = self.format_timestamp(start_time)
             end_str = self.format_timestamp(end_time)

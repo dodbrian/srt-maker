@@ -141,3 +141,101 @@ Hello world
 
         finally:
             Path(output_path).unlink(missing_ok=True)
+
+    def test_min_display_duration_extends_short_segment(self):
+        """Test that short segments are extended to minimum display duration"""
+        generator = SRTGenerator(min_display_duration=2.0)
+
+        segments = [{"start": 0.0, "end": 0.5, "text": "Hi"}]
+
+        result = generator.generate_srt(segments)
+
+        # Should be extended from 0.5s to 2.0s
+        assert "00:00:00,000 --> 00:00:02,000" in result
+
+    def test_min_display_duration_no_effect_on_long_segment(self):
+        """Test that long segments are not shortened by min_display_duration"""
+        generator = SRTGenerator(min_display_duration=2.0)
+
+        segments = [{"start": 0.0, "end": 5.0, "text": "This is a longer segment"}]
+
+        result = generator.generate_srt(segments)
+
+        # Should remain 5.0s
+        assert "00:00:00,000 --> 00:00:05,000" in result
+
+    def test_min_display_duration_prevents_overlap(self):
+        """Test that extending duration doesn't cause overlap with next segment"""
+        generator = SRTGenerator(min_display_duration=2.0)
+
+        segments = [
+            {"start": 0.0, "end": 0.5, "text": "Hello"},
+            {"start": 1.0, "end": 1.2, "text": "World"},
+        ]
+
+        result = generator.generate_srt(segments)
+
+        # First segment should be capped at 1.0s (start of next segment)
+        assert "00:00:00,000 --> 00:00:01,000" in result
+        # Second segment can extend to 2.0s (1.0 + 2.0 = 3.0 - 1.0 start = 2.0 duration)
+        assert "00:00:01,000 --> 00:00:03,000" in result
+
+    def test_min_display_duration_last_segment_extends_freely(self):
+        """Test that the last segment can extend beyond without constraint"""
+        generator = SRTGenerator(min_display_duration=3.0)
+
+        segments = [
+            {"start": 0.0, "end": 2.0, "text": "First"},
+            {"start": 5.0, "end": 5.5, "text": "Last"},
+        ]
+
+        result = generator.generate_srt(segments)
+
+        # Last segment should extend to full 3.0s duration
+        assert "00:00:05,000 --> 00:00:08,000" in result
+
+    def test_min_display_duration_zero_has_no_effect(self):
+        """Test that min_display_duration=0.0 keeps original timing"""
+        generator = SRTGenerator(min_display_duration=0.0)
+
+        segments = [{"start": 0.0, "end": 0.3, "text": "Short"}]
+
+        result = generator.generate_srt(segments)
+
+        # Should keep original 0.3s duration
+        assert "00:00:00,000 --> 00:00:00,300" in result
+
+    def test_min_display_duration_with_time_offset(self):
+        """Test that min_display_duration works correctly with time_offset"""
+        generator = SRTGenerator(min_display_duration=2.0)
+
+        segments = [
+            {"start": 0.0, "end": 0.5, "text": "Hello"},
+            {"start": 1.0, "end": 1.2, "text": "World"},
+        ]
+
+        result = generator.generate_srt(segments, time_offset=5.0)
+
+        # With offset of 5.0s, first segment: 5.0 -> min(5.0+2.0, 6.0) = 6.0
+        assert "00:00:05,000 --> 00:00:06,000" in result
+        # Second segment: 6.0 -> 6.0+2.0 = 8.0
+        assert "00:00:06,000 --> 00:00:08,000" in result
+
+    def test_min_display_duration_consecutive_short_segments(self):
+        """Test multiple consecutive short segments with gaps"""
+        generator = SRTGenerator(min_display_duration=1.5)
+
+        segments = [
+            {"start": 0.0, "end": 0.3, "text": "One"},
+            {"start": 0.8, "end": 1.0, "text": "Two"},
+            {"start": 1.5, "end": 1.7, "text": "Three"},
+        ]
+
+        result = generator.generate_srt(segments)
+
+        # First: 0.0 -> min(1.5, 0.8) = 0.8
+        assert "00:00:00,000 --> 00:00:00,800" in result
+        # Second: 0.8 -> min(0.8+1.5=2.3, 1.5) = 1.5
+        assert "00:00:00,800 --> 00:00:01,500" in result
+        # Third: 1.5 -> 1.5+1.5 = 3.0 (last segment)
+        assert "00:00:01,500 --> 00:00:03,000" in result

@@ -122,6 +122,15 @@ def parse_args(argv=None):
         f"(default: {DEFAULT_MAX_REPETITIONS})",
     )
 
+    parser.add_argument(
+        "--min-display-duration",
+        type=float,
+        default=0.0,
+        help="Minimum display duration for subtitles in seconds "
+        "(default: 0.0 - use actual speech duration). "
+        "Extends short subtitles for better readability.",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -191,7 +200,10 @@ def main():
                 "[cyan]Generating SRT file...", total=None
             )
 
-            srt_generator = SRTGenerator(timestamp_precision=args.precision)
+            srt_generator = SRTGenerator(
+                timestamp_precision=args.precision,
+                min_display_duration=args.min_display_duration,
+            )
             srt_generator.write_srt(segments, output_path, time_offset=args.offset)
 
             progress.update(generate_task, completed=True)

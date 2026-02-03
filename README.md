@@ -9,6 +9,7 @@ CLI tool to generate SRT subtitles from video audio using speech recognition.
 - Progress indicators for transcription
 - Configurable output parameters
 - Timestamp precision control
+- Minimum subtitle display duration for better readability
 
 ## Requirements
 
@@ -59,14 +60,20 @@ This generates `video.srt` in the same directory.
 srt-maker video.mp4 [OPTIONS]
 
 Options:
-  video_file              Path to the input video file (required)
-  -o, --output OUTPUT     Output SRT file path (default: <video_name>.srt)
-  -m, --model MODEL       Whisper model size: tiny, base, small, medium, large, large-v1, large-v2, large-v3 (default: base)
-  -l, --language LANG     Language code (e.g., en, es, fr). Auto-detect if not specified
-  -p, --precision N       Timestamp precision in milliseconds (default: 0)
-  -d, --device DEVICE     Device to run the model on: cpu, cuda, auto (default: auto)
-  -v, --verbose           Enable verbose logging
-  --help                  Show help message
+  video_file                  Path to the input video file (required)
+  -o, --output OUTPUT         Output SRT file path (default: <video_name>.srt)
+  -m, --model MODEL           Whisper model size: tiny, base, small, medium, large, large-v1, large-v2, large-v3 (default: base)
+  -l, --language LANG         Language code (e.g., en, es, fr). Auto-detect if not specified
+  -p, --precision N           Timestamp precision in milliseconds (default: 0)
+  -d, --device DEVICE         Device to run the model on: cpu, cuda, auto (default: auto)
+  --min-display-duration N    Minimum display duration for subtitles in seconds (default: 0.0 - use actual speech duration)
+  --no-speech-threshold N     Filter segments with no_speech_prob above this value (default: 0.6)
+  --logprob-threshold N       Filter segments with avg_logprob below this value (default: -1.0)
+  --min-duration N            Minimum segment duration in seconds (default: 0.1)
+  --max-repetitions N         Max consecutive repetitions of same text (default: 2)
+  --offset N                 Time offset in seconds to add to all timestamps (default: 0.0)
+  -v, --verbose              Enable verbose logging
+  --help                     Show help message
 ```
 
 ### Examples
@@ -94,6 +101,11 @@ srt-maker video.mp4 -l en
 Force CPU usage:
 ```bash
 srt-maker video.mp4 -d cpu
+```
+
+Extend short subtitles for better readability (2 second minimum display duration):
+```bash
+srt-maker video.mp4 --min-display-duration 2.0
 ```
 
 ## Development

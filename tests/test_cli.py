@@ -19,6 +19,7 @@ class TestCLI:
         assert args.offset == 0.0
         assert args.device is None
         assert args.verbose is False
+        assert args.min_display_duration == 0.0
 
     def test_parse_args_with_options(self):
         args = parse_args(
@@ -55,6 +56,12 @@ class TestCLI:
 
         captured = capsys.readouterr()
         assert "invalid choice" in captured.err
+
+    def test_parse_args_with_min_display_duration(self):
+        args = parse_args(["video.mp4", "--min-display-duration", "2.5"])
+
+        assert args.video_file == "video.mp4"
+        assert args.min_display_duration == 2.5
 
     def test_setup_logging(self):
         import logging
