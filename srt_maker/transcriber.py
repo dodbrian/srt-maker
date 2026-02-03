@@ -45,14 +45,14 @@ class Transcriber:
 
         logger.info(f"Transcribing audio from {audio_path}")
 
-        assert self.model is not None, "Model should be loaded after load_model() call"
         result = self.model.transcribe(
             audio_path, language=self.language, word_timestamps=False
         )
 
-        logger.info(
-            f"Transcription complete. Detected language: {result.get('language', 'unknown')}"
-        )
+        detected_lang = result.get("language", "unknown")
+        self.language = detected_lang
+
+        logger.info(f"Transcription complete. Detected language: {detected_lang}")
 
         return result
 

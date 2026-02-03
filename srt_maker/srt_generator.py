@@ -17,8 +17,9 @@ class SRTGenerator:
         secs = int(secs)
 
         if self.timestamp_precision > 0:
-            ms_format = f"{{0:0{3 + self.timestamp_precision}d}}"
-            ms_str = ms_format.format(int(milliseconds * 1000)).ljust(3, "0")[:3]
+            ms_total_digits = 3 + self.timestamp_precision
+            ms_format = f"{{0:0{ms_total_digits}d}}"
+            ms_str = ms_format.format(int(milliseconds * 1000))
         else:
             ms_str = f"{int(milliseconds * 1000):03d}"
 
