@@ -19,6 +19,8 @@ from .transcriber import (
     DEFAULT_LOGPROB_THRESHOLD,
     DEFAULT_MIN_DURATION,
     DEFAULT_MAX_REPETITIONS,
+    DEFAULT_SIMILARITY_THRESHOLD,
+    DEFAULT_REPETITION_WINDOW,
 )
 from .srt_generator import SRTGenerator
 
@@ -123,6 +125,22 @@ def parse_args(argv=None):
     )
 
     parser.add_argument(
+        "--similarity-threshold",
+        type=float,
+        default=DEFAULT_SIMILARITY_THRESHOLD,
+        help=f"Text similarity threshold for detecting hallucination clusters "
+        f"(0.0-1.0, default: {DEFAULT_SIMILARITY_THRESHOLD})",
+    )
+
+    parser.add_argument(
+        "--repetition-window",
+        type=float,
+        default=DEFAULT_REPETITION_WINDOW,
+        help=f"Time window in seconds to look for similar repeated text "
+        f"(default: {DEFAULT_REPETITION_WINDOW})",
+    )
+
+    parser.add_argument(
         "--min-display-duration",
         type=float,
         default=0.0,
@@ -183,6 +201,8 @@ def main():
                 logprob_threshold=args.logprob_threshold,
                 min_segment_duration=args.min_duration,
                 max_repetitions=args.max_repetitions,
+                similarity_threshold=args.similarity_threshold,
+                repetition_window=args.repetition_window,
             )
             transcriber.load_model()
 

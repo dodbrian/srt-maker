@@ -1,15 +1,21 @@
 import whisper
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Set
+from difflib import SequenceMatcher
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 # Default thresholds for filtering hallucinated/low-quality segments
-DEFAULT_NO_SPEECH_THRESHOLD = 0.6  # Filter segments with no_speech_prob > this
-DEFAULT_LOGPROB_THRESHOLD = -1.0  # Filter segments with avg_logprob < this
+# These are tuned to catch obvious hallucinations while preserving quiet speech
+DEFAULT_NO_SPEECH_THRESHOLD = 0.9  # Filter segments with no_speech_prob > this
+DEFAULT_LOGPROB_THRESHOLD = -1.5  # Filter segments with avg_logprob < this
 DEFAULT_MIN_DURATION = 0.1  # Minimum segment duration in seconds
 DEFAULT_MAX_REPETITIONS = 2  # Max times same text can repeat consecutively
+DEFAULT_SIMILARITY_THRESHOLD = (
+    0.7  # Text similarity threshold for detecting similar hallucinations
+)
+DEFAULT_REPETITION_WINDOW = 60.0  # Time window (seconds) to look for similar text
 
 
 class Transcriber:
@@ -33,6 +39,8 @@ class Transcriber:
         logprob_threshold: float = DEFAULT_LOGPROB_THRESHOLD,
         min_segment_duration: float = DEFAULT_MIN_DURATION,
         max_repetitions: int = DEFAULT_MAX_REPETITIONS,
+        similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+        repetition_window: float = DEFAULT_REPETITION_WINDOW,
     ):
         if model_size not in self.MODEL_SIZES:
             raise ValueError(
@@ -50,6 +58,8 @@ class Transcriber:
         self.logprob_threshold = logprob_threshold
         self.min_segment_duration = min_segment_duration
         self.max_repetitions = max_repetitions
+        self.similarity_threshold = similarity_threshold
+        self.repetition_window = repetition_window
 
     @staticmethod
     def detect_gpu() -> bool:
@@ -100,26 +110,105 @@ class Transcriber:
 
         return result
 
+    @staticmethod
+    def text_similarity(text1: str, text2: str) -> float:
+        """Calculate similarity ratio between two texts (0.0 to 1.0)."""
+        return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
+
+    def _find_similar_segments_in_window(
+        self,
+        segments: List[Dict[str, Any]],
+        current_idx: int,
+        text: str,
+        start_time: float,
+    ) -> int:
+        """
+        Count how many similar segments exist within the time window.
+        Looks both backward and forward from current position.
+        """
+        count = 0
+        for i, seg in enumerate(segments):
+            if i == current_idx:
+                continue
+            seg_start = seg.get("start", 0.0)
+            seg_text = seg.get("text", "").strip()
+            if not seg_text:
+                continue
+            # Check if within time window
+            if abs(seg_start - start_time) <= self.repetition_window:
+                similarity = self.text_similarity(text, seg_text)
+                if similarity >= self.similarity_threshold:
+                    count += 1
+        return count
+
+    def _detect_hallucination_clusters(
+        self, segments: List[Dict[str, Any]]
+    ) -> Set[int]:
+        """
+        Detect clusters of similar text that indicate hallucinations.
+        Returns indices of segments that are part of hallucination clusters.
+        """
+        hallucination_indices: Set[int] = set()
+
+        for i, segment in enumerate(segments):
+            text = segment.get("text", "").strip()
+            if not text:
+                continue
+
+            start_time = segment.get("start", 0.0)
+            similar_count = self._find_similar_segments_in_window(
+                segments, i, text, start_time
+            )
+
+            # If there are 3+ similar segments in the window, it's likely hallucination
+            # Keep the first occurrence, mark others
+            if similar_count >= 2:
+                # Find all similar segments and keep only the first one
+                first_occurrence_idx = None
+                for j, seg in enumerate(segments):
+                    seg_text = seg.get("text", "").strip()
+                    seg_start = seg.get("start", 0.0)
+                    if not seg_text:
+                        continue
+                    if abs(seg_start - start_time) <= self.repetition_window:
+                        similarity = self.text_similarity(text, seg_text)
+                        if similarity >= self.similarity_threshold:
+                            if first_occurrence_idx is None:
+                                first_occurrence_idx = j
+                            elif j != first_occurrence_idx:
+                                hallucination_indices.add(j)
+
+        return hallucination_indices
+
     def filter_segments(self, segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Filter out hallucinated and low-quality segments.
 
         Applies multiple filtering strategies:
-        1. Remove segments with high no_speech probability
+        1. Remove segments with very high no_speech probability
         2. Remove segments with very low average log probability
         3. Remove very short segments (likely artifacts)
-        4. Remove consecutive duplicate text (hallucination pattern)
+        4. Remove consecutive duplicate text (exact match)
+        5. Remove hallucination clusters (similar text repeated in time window)
         """
         if not segments:
             return segments
+
+        # First pass: detect hallucination clusters
+        hallucination_indices = self._detect_hallucination_clusters(segments)
 
         filtered = []
         prev_text = None
         repetition_count = 0
 
-        for segment in segments:
+        for i, segment in enumerate(segments):
             text = segment.get("text", "").strip()
             if not text:
+                continue
+
+            # Check if part of hallucination cluster
+            if i in hallucination_indices:
+                logger.debug(f"Filtered segment (hallucination cluster): {text[:50]}")
                 continue
 
             # Check no_speech probability
@@ -148,7 +237,7 @@ class Transcriber:
                 )
                 continue
 
-            # Check for consecutive repetitions
+            # Check for consecutive exact repetitions
             if text == prev_text:
                 repetition_count += 1
                 if repetition_count >= self.max_repetitions:

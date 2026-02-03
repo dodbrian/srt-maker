@@ -275,8 +275,13 @@ class TestTranscriberFiltering:
         assert result[0]["text"] == "Normal segment"
 
     def test_filter_segments_removes_consecutive_repetitions(self):
-        """Test that consecutive repeated text is filtered"""
-        transcriber = Transcriber(model_size="base", max_repetitions=2)
+        """Test that consecutive repeated text is filtered by cluster detection"""
+        # Disable similarity-based filtering to test only consecutive repetition
+        transcriber = Transcriber(
+            model_size="base",
+            max_repetitions=2,
+            similarity_threshold=1.1,  # Disable similarity detection
+        )
         segments = [
             {
                 "start": 0.0,
@@ -312,7 +317,12 @@ class TestTranscriberFiltering:
 
     def test_filter_segments_resets_repetition_count_on_new_text(self):
         """Test that repetition counter resets when text changes"""
-        transcriber = Transcriber(model_size="base", max_repetitions=2)
+        # Disable similarity-based filtering to test only consecutive repetition
+        transcriber = Transcriber(
+            model_size="base",
+            max_repetitions=2,
+            similarity_threshold=1.1,  # Disable similarity detection
+        )
         segments = [
             {
                 "start": 0.0,
@@ -422,3 +432,90 @@ class TestTranscriberFiltering:
 
         assert len(segments) == 1
         assert segments[0]["text"] == "Good segment"
+
+    def test_text_similarity(self):
+        """Test text similarity calculation"""
+        assert Transcriber.text_similarity("hello", "hello") == 1.0
+        assert Transcriber.text_similarity("hello", "HELLO") == 1.0  # Case insensitive
+        assert Transcriber.text_similarity("hello", "hallo") > 0.7
+        assert Transcriber.text_similarity("hello", "world") < 0.5
+
+    def test_filter_segments_detects_hallucination_clusters(self):
+        """Test that similar text repeated within time window is filtered"""
+        transcriber = Transcriber(
+            model_size="base",
+            similarity_threshold=0.7,
+            repetition_window=60.0,
+        )
+        segments = [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": "Ich habe mich verstanden",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+            {
+                "start": 5.0,
+                "end": 7.0,
+                "text": "Ich habe mich nicht verstanden",  # Similar - hallucination
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+            {
+                "start": 10.0,
+                "end": 12.0,
+                "text": "Ich habe mich verstanden",  # Same - hallucination
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+            {
+                "start": 30.0,
+                "end": 32.0,
+                "text": "Something completely different",  # Different - keep
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+        ]
+        result = transcriber.filter_segments(segments)
+        # First occurrence + different text should remain
+        assert len(result) == 2
+        assert result[0]["text"] == "Ich habe mich verstanden"
+        assert result[1]["text"] == "Something completely different"
+
+    def test_filter_segments_respects_time_window(self):
+        """Test that similar text outside time window is not filtered"""
+        transcriber = Transcriber(
+            model_size="base",
+            similarity_threshold=0.7,
+            repetition_window=30.0,  # 30 second window
+        )
+        segments = [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": "Repeated phrase here",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+            {
+                "start": 100.0,  # 100 seconds later - outside window
+                "end": 102.0,
+                "text": "Repeated phrase here",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+        ]
+        result = transcriber.filter_segments(segments)
+        # Both should remain since they're outside the time window
+        assert len(result) == 2
+
+    def test_init_similarity_thresholds(self):
+        """Test that similarity thresholds are set correctly"""
+        transcriber = Transcriber(
+            model_size="base",
+            similarity_threshold=0.8,
+            repetition_window=120.0,
+        )
+        assert transcriber.similarity_threshold == 0.8
+        assert transcriber.repetition_window == 120.0
