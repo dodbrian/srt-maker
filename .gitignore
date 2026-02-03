@@ -50,6 +50,7 @@ ENV/
 # Project specific
 *.srt
 *.mp4
+*.MP4
 *.mp3
 *.wav
 *.avi
