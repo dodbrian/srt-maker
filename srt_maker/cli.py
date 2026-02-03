@@ -13,7 +13,13 @@ from rich.progress import (
 )
 
 from .audio_extractor import AudioExtractor
-from .transcriber import Transcriber
+from .transcriber import (
+    Transcriber,
+    DEFAULT_NO_SPEECH_THRESHOLD,
+    DEFAULT_LOGPROB_THRESHOLD,
+    DEFAULT_MIN_DURATION,
+    DEFAULT_MAX_REPETITIONS,
+)
 from .srt_generator import SRTGenerator
 
 console = Console()
@@ -84,6 +90,38 @@ def parse_args(argv=None):
         "-v", "--verbose", action="store_true", help="Enable verbose logging"
     )
 
+    # Hallucination filtering options
+    parser.add_argument(
+        "--no-speech-threshold",
+        type=float,
+        default=DEFAULT_NO_SPEECH_THRESHOLD,
+        help=f"Filter segments with no_speech_prob above this value "
+        f"(default: {DEFAULT_NO_SPEECH_THRESHOLD})",
+    )
+
+    parser.add_argument(
+        "--logprob-threshold",
+        type=float,
+        default=DEFAULT_LOGPROB_THRESHOLD,
+        help=f"Filter segments with avg_logprob below this value "
+        f"(default: {DEFAULT_LOGPROB_THRESHOLD})",
+    )
+
+    parser.add_argument(
+        "--min-duration",
+        type=float,
+        default=DEFAULT_MIN_DURATION,
+        help=f"Minimum segment duration in seconds (default: {DEFAULT_MIN_DURATION})",
+    )
+
+    parser.add_argument(
+        "--max-repetitions",
+        type=int,
+        default=DEFAULT_MAX_REPETITIONS,
+        help=f"Max consecutive repetitions of same text "
+        f"(default: {DEFAULT_MAX_REPETITIONS})",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -129,7 +167,13 @@ def main():
             model_task = progress.add_task("[cyan]Loading Whisper model...", total=None)
 
             transcriber = Transcriber(
-                model_size=args.model, language=args.language, device=args.device
+                model_size=args.model,
+                language=args.language,
+                device=args.device,
+                no_speech_threshold=args.no_speech_threshold,
+                logprob_threshold=args.logprob_threshold,
+                min_segment_duration=args.min_duration,
+                max_repetitions=args.max_repetitions,
             )
             transcriber.load_model()
 
