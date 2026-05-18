@@ -19,6 +19,8 @@ class TestCLI:
         assert args.offset == 0.0
         assert args.device is None
         assert args.verbose is False
+        assert args.temperature == 0.0
+        assert args.compression_ratio_threshold == 2.4
         assert args.min_display_duration == 0.0
 
     def test_parse_args_with_options(self):
@@ -37,6 +39,10 @@ class TestCLI:
                 "1.5",
                 "-d",
                 "cpu",
+                "--temperature",
+                "0.1",
+                "--compression-ratio-threshold",
+                "2.0",
                 "-v",
             ]
         )
@@ -48,6 +54,8 @@ class TestCLI:
         assert args.precision == 100
         assert args.offset == 1.5
         assert args.device == "cpu"
+        assert args.temperature == 0.1
+        assert args.compression_ratio_threshold == 2.0
         assert args.verbose is True
 
     def test_parse_args_invalid_model(self, capsys):

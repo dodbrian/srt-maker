@@ -6,6 +6,8 @@ from srt_maker.transcriber import (
     Transcriber,
     DEFAULT_NO_SPEECH_THRESHOLD,
     DEFAULT_LOGPROB_THRESHOLD,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_COMPRESSION_RATIO_THRESHOLD,
     DEFAULT_MIN_DURATION,
     DEFAULT_MAX_REPETITIONS,
 )
@@ -103,6 +105,27 @@ class TestTranscriber:
         assert call_args[1]["language"] == "fr"
 
     @patch("srt_maker.transcriber.whisper.load_model")
+    def test_transcribe_passes_configured_thresholds(self, mock_load_model):
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = {"segments": [], "language": "de"}
+        mock_load_model.return_value = mock_model
+
+        transcriber = Transcriber(
+            model_size="base",
+            no_speech_threshold=0.55,
+            logprob_threshold=-0.9,
+            temperature=0.1,
+            compression_ratio_threshold=2.1,
+        )
+        transcriber.transcribe("test_audio.wav")
+
+        call_args = mock_model.transcribe.call_args
+        assert call_args[1]["no_speech_threshold"] == 0.55
+        assert call_args[1]["logprob_threshold"] == -0.9
+        assert call_args[1]["temperature"] == 0.1
+        assert call_args[1]["compression_ratio_threshold"] == 2.1
+
+    @patch("srt_maker.transcriber.whisper.load_model")
     def test_get_segments(self, mock_load_model):
         mock_model = MagicMock()
         mock_result = {
@@ -160,6 +183,11 @@ class TestTranscriberFiltering:
         transcriber = Transcriber(model_size="base")
         assert transcriber.no_speech_threshold == DEFAULT_NO_SPEECH_THRESHOLD
         assert transcriber.logprob_threshold == DEFAULT_LOGPROB_THRESHOLD
+        assert transcriber.temperature == DEFAULT_TEMPERATURE
+        assert (
+            transcriber.compression_ratio_threshold
+            == DEFAULT_COMPRESSION_RATIO_THRESHOLD
+        )
         assert transcriber.min_segment_duration == DEFAULT_MIN_DURATION
         assert transcriber.max_repetitions == DEFAULT_MAX_REPETITIONS
 
@@ -169,11 +197,15 @@ class TestTranscriberFiltering:
             model_size="base",
             no_speech_threshold=0.8,
             logprob_threshold=-0.5,
+            temperature=0.2,
+            compression_ratio_threshold=2.0,
             min_segment_duration=0.5,
             max_repetitions=3,
         )
         assert transcriber.no_speech_threshold == 0.8
         assert transcriber.logprob_threshold == -0.5
+        assert transcriber.temperature == 0.2
+        assert transcriber.compression_ratio_threshold == 2.0
         assert transcriber.min_segment_duration == 0.5
         assert transcriber.max_repetitions == 3
 
@@ -440,6 +472,98 @@ class TestTranscriberFiltering:
         assert Transcriber.text_similarity("hello", "hallo") > 0.7
         assert Transcriber.text_similarity("hello", "world") < 0.5
 
+    def test_has_repeated_token_hallucination(self):
+        assert Transcriber.has_repeated_token_hallucination(
+            "Okay, okay, okay, okay, okay, okay, okay, okay"
+        )
+        assert not Transcriber.has_repeated_token_hallucination(
+            "Okay, das ist schon okay fur mich"
+        )
+
+    def test_has_repeated_char_hallucination(self):
+        assert Transcriber.has_repeated_char_hallucination(
+            "HMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"
+        )
+        assert not Transcriber.has_repeated_char_hallucination(
+            "Hallo, wie geht es dir heute"
+        )
+
+    def test_is_suspicious_segment_for_high_compression(self):
+        segment = {
+            "start": 0.0,
+            "end": 8.0,
+            "compression_ratio": 5.0,
+            "no_speech_prob": 0.1,
+            "avg_logprob": -0.2,
+        }
+        assert Transcriber.is_suspicious_segment(
+            "This repeated phrase keeps looping.", segment
+        )
+
+    def test_is_not_suspicious_segment_for_short_clean_high_compression_text(self):
+        segment = {
+            "start": 0.0,
+            "end": 1.1,
+            "compression_ratio": 7.8,
+            "no_speech_prob": 0.03,
+            "avg_logprob": -0.4,
+        }
+        assert not Transcriber.is_suspicious_segment("Hello, Martin.", segment)
+
+    def test_is_suspicious_segment_for_short_low_confidence_text(self):
+        segment = {
+            "start": 0.0,
+            "end": 1.5,
+            "compression_ratio": 0.5,
+            "no_speech_prob": 0.7,
+            "avg_logprob": -1.6,
+        }
+        assert Transcriber.is_suspicious_segment("This is it", segment)
+
+    def test_is_not_suspicious_segment_for_normal_dialogue(self):
+        segment = {
+            "start": 0.0,
+            "end": 2.0,
+            "compression_ratio": 1.0,
+            "no_speech_prob": 0.1,
+            "avg_logprob": -0.5,
+        }
+        assert not Transcriber.is_suspicious_segment(
+            "Please turn left at the corner.", segment
+        )
+
+    def test_passes_clip_validation(self, tmp_path):
+        transcriber = Transcriber(model_size="base")
+        transcriber.model = MagicMock()
+        transcriber._slice_audio_clip = MagicMock(return_value=str(tmp_path / "clip.wav"))
+        Path(tmp_path / "clip.wav").touch()
+        transcriber._transcribe_clip = MagicMock(
+            return_value=["This is not the exact present."]
+        )
+
+        segment = {"start": 0.0, "end": 2.0}
+        assert transcriber._passes_clip_validation(
+            "audio.wav",
+            "This is not the actual present.",
+            segment,
+        )
+
+    def test_fails_clip_validation(self, tmp_path):
+        transcriber = Transcriber(model_size="base")
+        transcriber.model = MagicMock()
+        transcriber._slice_audio_clip = MagicMock(return_value=str(tmp_path / "clip.wav"))
+        Path(tmp_path / "clip.wav").touch()
+        transcriber._transcribe_clip = MagicMock(
+            return_value=["Completely unrelated clip text"]
+        )
+
+        segment = {"start": 0.0, "end": 2.0}
+        assert not transcriber._passes_clip_validation(
+            "audio.wav",
+            "This is it",
+            segment,
+        )
+
     def test_filter_segments_detects_hallucination_clusters(self):
         """Test that similar text repeated within time window is filtered"""
         transcriber = Transcriber(
@@ -451,21 +575,21 @@ class TestTranscriberFiltering:
             {
                 "start": 0.0,
                 "end": 2.0,
-                "text": "Ich habe mich verstanden",
+                "text": "Alpha pattern confirmed",
                 "no_speech_prob": 0.1,
                 "avg_logprob": -0.5,
             },
             {
                 "start": 5.0,
                 "end": 7.0,
-                "text": "Ich habe mich nicht verstanden",  # Similar - hallucination
+                "text": "Alpha pattern not confirmed",  # Similar - hallucination
                 "no_speech_prob": 0.1,
                 "avg_logprob": -0.5,
             },
             {
                 "start": 10.0,
                 "end": 12.0,
-                "text": "Ich habe mich verstanden",  # Same - hallucination
+                "text": "Alpha pattern confirmed",  # Same - hallucination
                 "no_speech_prob": 0.1,
                 "avg_logprob": -0.5,
             },
@@ -480,7 +604,7 @@ class TestTranscriberFiltering:
         result = transcriber.filter_segments(segments)
         # First occurrence + different text should remain
         assert len(result) == 2
-        assert result[0]["text"] == "Ich habe mich verstanden"
+        assert result[0]["text"] == "Alpha pattern confirmed"
         assert result[1]["text"] == "Something completely different"
 
     def test_filter_segments_respects_time_window(self):
@@ -509,6 +633,123 @@ class TestTranscriberFiltering:
         result = transcriber.filter_segments(segments)
         # Both should remain since they're outside the time window
         assert len(result) == 2
+
+    def test_filter_segments_removes_long_adjacent_near_duplicates(self):
+        """Test that long adjacent near-duplicate segments are filtered"""
+        transcriber = Transcriber(
+            model_size="base",
+            similarity_threshold=1.1,  # Disable cluster detection
+        )
+        segments = [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": (
+                    "This generated sentence keeps repeating even though "
+                    "it should not really be here at all."
+                ),
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+            {
+                "start": 1.0,
+                "end": 10.0,
+                "text": (
+                    "This generated sentence keeps repeating even though "
+                    "it should not be here at all."
+                ),
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+        ]
+        result = transcriber.filter_segments(segments)
+        assert len(result) == 1
+        assert result[0]["text"].startswith("This generated sentence keeps repeating")
+
+    def test_filter_segments_keeps_short_adjacent_real_dialogue(self):
+        """Test that short adjacent dialogue is not removed as duplicate"""
+        transcriber = Transcriber(
+            model_size="base",
+            similarity_threshold=1.1,  # Disable cluster detection
+        )
+        segments = [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Please turn left at the corner.",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+            {
+                "start": 1.1,
+                "end": 3.0,
+                "text": "Turn left at the corner.",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.5,
+            },
+        ]
+        result = transcriber.filter_segments(segments)
+        assert len(result) == 2
+
+    def test_filter_segments_removes_repeated_short_phrase_hallucinations(self):
+        transcriber = Transcriber(
+            model_size="base",
+            similarity_threshold=1.1,
+        )
+        segments = [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Boilerplate",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.2,
+                "compression_ratio": 5.0,
+            },
+            {
+                "start": 2.0,
+                "end": 3.0,
+                "text": "Boilerplate",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.2,
+                "compression_ratio": 5.0,
+            },
+            {
+                "start": 4.0,
+                "end": 5.0,
+                "text": "Boilerplate",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.2,
+                "compression_ratio": 5.0,
+            },
+            {
+                "start": 6.0,
+                "end": 7.0,
+                "text": "Boilerplate",
+                "no_speech_prob": 0.1,
+                "avg_logprob": -0.2,
+                "compression_ratio": 5.0,
+            },
+        ]
+        result = transcriber.filter_segments(segments)
+        assert result == []
+
+    def test_filter_segments_keeps_non_repeated_short_phrase(self):
+        transcriber = Transcriber(
+            model_size="base",
+            similarity_threshold=1.1,
+        )
+        segments = [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Really?",
+                "no_speech_prob": 0.05,
+                "avg_logprob": -0.2,
+                "compression_ratio": 5.8,
+            }
+        ]
+        result = transcriber.filter_segments(segments)
+        assert len(result) == 1
 
     def test_init_similarity_thresholds(self):
         """Test that similarity thresholds are set correctly"""

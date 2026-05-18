@@ -17,6 +17,8 @@ from .transcriber import (
     Transcriber,
     DEFAULT_NO_SPEECH_THRESHOLD,
     DEFAULT_LOGPROB_THRESHOLD,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_COMPRESSION_RATIO_THRESHOLD,
     DEFAULT_MIN_DURATION,
     DEFAULT_MAX_REPETITIONS,
     DEFAULT_SIMILARITY_THRESHOLD,
@@ -108,6 +110,21 @@ def parse_args(argv=None):
         help=f"Filter segments with avg_logprob below this value "
         f"(logprob is the model's confidence score) "
         f"(default: {DEFAULT_LOGPROB_THRESHOLD})",
+    )
+
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=DEFAULT_TEMPERATURE,
+        help=f"Whisper decoding temperature (default: {DEFAULT_TEMPERATURE})",
+    )
+
+    parser.add_argument(
+        "--compression-ratio-threshold",
+        type=float,
+        default=DEFAULT_COMPRESSION_RATIO_THRESHOLD,
+        help="Filter segments with overly repetitive output during decoding "
+        f"(default: {DEFAULT_COMPRESSION_RATIO_THRESHOLD})",
     )
 
     parser.add_argument(
@@ -207,6 +224,8 @@ def main():
                 device=args.device,
                 no_speech_threshold=args.no_speech_threshold,
                 logprob_threshold=args.logprob_threshold,
+                temperature=args.temperature,
+                compression_ratio_threshold=args.compression_ratio_threshold,
                 min_segment_duration=args.min_duration,
                 max_repetitions=args.max_repetitions,
                 similarity_threshold=args.similarity_threshold,
