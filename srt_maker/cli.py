@@ -106,6 +106,7 @@ def parse_args(argv=None):
         type=float,
         default=DEFAULT_LOGPROB_THRESHOLD,
         help=f"Filter segments with avg_logprob below this value "
+        f"(logprob is the model's confidence score) "
         f"(default: {DEFAULT_LOGPROB_THRESHOLD})",
     )
 
@@ -148,6 +149,13 @@ def parse_args(argv=None):
         "(default: 0.0 - use actual speech duration). "
         "Extends short subtitles for better readability.",
     )
+
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if not argv:
+        parser.print_help()
+        parser.exit(1)
 
     return parser.parse_args(argv)
 

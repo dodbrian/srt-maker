@@ -162,3 +162,14 @@ class TestCLI:
         assert "Generate SRT subtitles" in captured.out
         assert "video_file" in captured.out
         assert "--output" in captured.out
+
+    def test_no_args_shows_full_help(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            parse_args([])
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Generate SRT subtitles" in captured.out
+        assert "video_file" in captured.out
+        assert "--output" in captured.out
+        assert "Whisper model size" in captured.out
