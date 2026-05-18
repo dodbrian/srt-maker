@@ -212,6 +212,9 @@ def main():
                 similarity_threshold=args.similarity_threshold,
                 repetition_window=args.repetition_window,
             )
+            console.print(
+                f"[cyan]ℹ Using transcription model: {args.model}[/cyan]"
+            )
             transcriber.load_model()
 
             progress.update(model_task, completed=True)
@@ -238,6 +241,7 @@ def main():
 
         console.print(f"\n{len(segments)} subtitle segments generated.")
         console.print(f"[green]✓ SRT file saved to: {output_path}[/green]")
+        console.print(f"Transcription model: {args.model}")
 
         detected_language = transcriber.language or "auto-detected"
         console.print(f"Detected language: {detected_language}")

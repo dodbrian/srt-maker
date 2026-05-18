@@ -91,7 +91,11 @@ class TestCLI:
     @patch("srt_maker.cli.Transcriber")
     @patch("srt_maker.cli.SRTGenerator")
     def test_main_success(
-        self, mock_srt_gen, mock_transcriber_class, mock_audio_extractor_class
+        self,
+        mock_srt_gen,
+        mock_transcriber_class,
+        mock_audio_extractor_class,
+        capsys,
     ):
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as video_file:
             video_path = video_file.name
@@ -118,6 +122,10 @@ class TestCLI:
                 mock_transcriber.load_model.assert_called_once()
                 mock_transcriber.get_segments.assert_called_once()
                 mock_srt_generator.write_srt.assert_called_once()
+
+                captured = capsys.readouterr()
+                assert "Using transcription model: base" in captured.out
+                assert "Transcription model: base" in captured.out
 
         finally:
             Path(video_path).unlink(missing_ok=True)
