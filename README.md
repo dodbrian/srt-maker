@@ -69,6 +69,9 @@ Options:
   --min-display-duration N    Minimum display duration for subtitles in seconds (default: 0.0 - use actual speech duration)
   --no-speech-threshold N     Filter segments with no_speech_prob above this value (default: 0.6)
   --logprob-threshold N       Filter segments with avg_logprob below this value (default: -1.0)
+  --temperature N             Whisper decoding temperature (default: 0.0)
+  --compression-ratio-threshold N
+                              Filter segments with overly repetitive output during decoding (default: 2.4)
   --min-duration N            Minimum segment duration in seconds (default: 0.1)
   --max-repetitions N         Max consecutive repetitions of same text (default: 2)
   --offset N                 Time offset in seconds to add to all timestamps (default: 0.0)
@@ -106,6 +109,20 @@ srt-maker video.mp4 -d cpu
 Extend short subtitles for better readability (2 second minimum display duration):
 ```bash
 srt-maker video.mp4 --min-display-duration 2.0
+```
+
+Reproduce a tuned German `small`-model run with stricter hallucination filtering:
+```bash
+srt-maker input.mp4 -l de -m small -d cuda \
+  -o output.srt \
+  --no-speech-threshold 0.85 \
+  --logprob-threshold -1.45 \
+  --temperature 0.0 \
+  --compression-ratio-threshold 2.0 \
+  --min-duration 0.0 \
+  --max-repetitions 1 \
+  --similarity-threshold 0.72 \
+  --repetition-window 20
 ```
 
 ## Development
