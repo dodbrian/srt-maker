@@ -21,7 +21,7 @@ Build a CLI tool that generates SRT subtitle files from video audio using speech
 
 2. Set up dependencies
    - openai-whisper
-   - ffmpeg-python
+   - ffmpeg system binary
    - rich (for progress bars)
    - tqdm
    - pytest + pytest-cov + pytest-mock
