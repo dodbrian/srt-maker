@@ -4,40 +4,46 @@ Guidelines for agentic coding systems (AI agents, Cursor, Copilot, etc.) working
 
 ## Build, Lint & Test Commands
 
+### Virtual Environment
+```bash
+# Use the project virtual environment for all Python, pytest, and lint commands
+. .venv/bin/activate
+```
+
 ### Install Dependencies
 ```bash
 # Install package and dependencies
-pip install -e .
+.venv/bin/pip install -e .
 
 # Install with dev dependencies for testing
-pip install -e ".[dev]"
+.venv/bin/pip install -e ".[dev]"
 ```
 
 ### Linting
 ```bash
 # Run pyflakes on all source files
-pyflakes srt_maker/**/*.py
+.venv/bin/python -m pyflakes srt_maker tests
 ```
 
 ### Testing
 ```bash
 # Run all tests with coverage
-pytest -v --cov=srt_maker tests/
+.venv/bin/python -m pytest -v --cov=srt_maker tests/
 
 # Run a single test file
-pytest tests/test_cli.py -v
+.venv/bin/python -m pytest tests/test_cli.py -v
 
 # Run a specific test function
-pytest tests/test_cli.py::TestCLI::test_parse_args_defaults -v
+.venv/bin/python -m pytest tests/test_cli.py::TestCLI::test_parse_args_defaults -v
 
 # Run tests matching a pattern
-pytest -k "test_parse" -v
+.venv/bin/python -m pytest -k "test_parse" -v
 
 # Skip slow tests
-pytest -v -m "not slow"
+.venv/bin/python -m pytest -v -m "not slow"
 
 # Run with coverage report
-pytest --cov=srt_maker --cov-report=term-missing
+.venv/bin/python -m pytest --cov=srt_maker --cov-report=term-missing
 ```
 
 ### Test Runner Script
@@ -153,12 +159,13 @@ srt-maker/
 
 ## Key Dependencies
 - **whisper**: OpenAI Whisper for speech recognition
-- **ffmpeg-python**: Audio/video processing
+- **ffmpeg**: System binary used for audio extraction via subprocess
 - **rich**: Terminal styling and progress bars
 - **pytest**: Testing framework
 - **pytest-cov**: Coverage reporting
 
 ## Notes for Agents
+- Always use the repository virtual environment at `.venv`
 - Always run tests before committing changes
 - Maintain 100% test coverage for critical paths
 - Use the test_runner.sh script for fast feedback loops
