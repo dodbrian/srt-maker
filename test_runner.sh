@@ -18,6 +18,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Prefer the repository virtualenv when it exists.
+if [ -d ".venv/bin" ]; then
+    PATH="$(pwd)/.venv/bin:$PATH"
+fi
+
 # Parse arguments
 WATCH_MODE=false
 SKIP_SLOW=false
@@ -53,7 +58,7 @@ done
 run_lint() {
     echo -e "${YELLOW}Running linting...${NC}"
     if command -v pyflakes &> /dev/null; then
-        if pyflakes srt_maker/**/*.py; then
+        if pyflakes srt_maker; then
             echo -e "${GREEN}✓ Linting passed${NC}"
         else
             return 1
@@ -65,14 +70,19 @@ run_lint() {
 
 # Function to run tests
 run_tests() {
-    local pytest_args="-v --tb=short --cov=srt_maker --cov-report=term-missing"
+    local pytest_args=(
+        -v
+        --tb=short
+        --cov=srt_maker
+        --cov-report=term-missing
+    )
     
     if [ "$SKIP_SLOW" = true ]; then
-        pytest_args="$pytest_args -m 'not slow'"
+        pytest_args+=(-m "not slow")
     fi
     
     echo -e "${YELLOW}Running tests...${NC}"
-    if pytest $pytest_args tests/; then
+    if pytest "${pytest_args[@]}" tests/; then
         echo -e "${GREEN}✓ All tests passed${NC}"
         return 0
     else
