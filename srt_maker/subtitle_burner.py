@@ -15,6 +15,15 @@ GPU_REQUEST_ERROR_MESSAGE = (
     "or omit --use-gpu."
 )
 GPU_DETECTION_TIMEOUT_SECONDS = 10
+NVENC_PROBE_FRAME_SIZE = 256
+NVENC_ERROR_MARKERS = (
+    "nvenc",
+    "h264_nvenc",
+    "cannot load libcuda",
+    "no capable devices found",
+    "openencodesessionex failed",
+    "initializeencoder failed",
+)
 NVENC_HQ_ARGS = [
     "-preset",
     "p6",
@@ -87,12 +96,40 @@ class SubtitleBurner:
             primary_color=primary_color,
             use_gpu=use_gpu,
         )
+        video_codec = cmd[cmd.index("-c:v") + 1]
 
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
             logger.info(f"Subtitled video saved to {output_file}")
             return str(output_file)
         except subprocess.CalledProcessError as error:
+            if self._should_retry_with_cpu(
+                error=error,
+                use_gpu=use_gpu,
+                video_codec=video_codec,
+            ):
+                logger.warning(
+                    "NVENC subtitle burn failed, retrying with CPU encoding: %s",
+                    error.stderr.strip() or error,
+                )
+                cpu_cmd = self._build_command(
+                    video_path=str(source_video),
+                    srt_path=str(subtitle_file),
+                    output_path=str(output_file),
+                    font_size=font_size,
+                    bottom_margin=bottom_margin,
+                    primary_color=primary_color,
+                    use_gpu=False,
+                )
+                subprocess.run(
+                    cpu_cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                logger.info(f"Subtitled video saved to {output_file}")
+                return str(output_file)
+
             logger.error(f"Failed to burn subtitles: {error.stderr}")
             raise RuntimeError(
                 f"Failed to burn subtitles into {video_path}: {error.stderr}"
@@ -303,6 +340,18 @@ class SubtitleBurner:
 
         return gpu_available
 
+    def _should_retry_with_cpu(
+        self,
+        error: subprocess.CalledProcessError,
+        use_gpu: Optional[bool],
+        video_codec: str,
+    ) -> bool:
+        if use_gpu is not None or video_codec != "h264_nvenc":
+            return False
+
+        stderr = (error.stderr or "").lower()
+        return any(marker in stderr for marker in NVENC_ERROR_MARKERS)
+
     def detect_gpu(self) -> bool:
         if self._gpu_available is not None:
             return self._gpu_available
@@ -313,7 +362,11 @@ class SubtitleBurner:
             "-f",
             "lavfi",
             "-i",
-            "color=size=128x128:rate=1:color=black",
+            (
+                "color="
+                f"size={NVENC_PROBE_FRAME_SIZE}x{NVENC_PROBE_FRAME_SIZE}:"
+                "rate=1:color=black"
+            ),
             "-frames:v",
             "1",
             "-c:v",

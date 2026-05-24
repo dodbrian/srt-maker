@@ -7,6 +7,7 @@ import pytest
 from srt_maker.subtitle_burner import (
     GPU_REQUEST_ERROR_MESSAGE,
     NVENC_HQ_ARGS,
+    NVENC_PROBE_FRAME_SIZE,
     SubtitleBurner,
 )
 
@@ -182,6 +183,62 @@ class TestSubtitleBurner:
         assert len(mock_run.call_args_list) == 2
         burn_cmd = mock_run.call_args_list[1][0][0]
         assert burn_cmd[burn_cmd.index("-c:v") + 1] == "libx264"
+
+    @patch("subprocess.run")
+    def test_burn_subtitles_retries_with_cpu_when_auto_nvenc_burn_fails(
+        self, mock_run, tmp_path
+    ):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="", stderr=""),
+            subprocess.CalledProcessError(
+                1,
+                "ffmpeg",
+                stderr="h264_nvenc failed: No capable devices found",
+            ),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        video_path = tmp_path / "sample.mp4"
+        srt_path = tmp_path / "sample.srt"
+        video_path.write_bytes(b"")
+        srt_path.write_text("", encoding="utf-8")
+
+        burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(1920, 1080))
+
+        output_path = burner.burn_subtitles(str(video_path), str(srt_path))
+
+        assert output_path == str(tmp_path / "sample_subtitled.mp4")
+        assert len(mock_run.call_args_list) == 3
+        gpu_burn_cmd = mock_run.call_args_list[1][0][0]
+        cpu_burn_cmd = mock_run.call_args_list[2][0][0]
+        assert gpu_burn_cmd[gpu_burn_cmd.index("-c:v") + 1] == "h264_nvenc"
+        assert cpu_burn_cmd[cpu_burn_cmd.index("-c:v") + 1] == "libx264"
+
+    @patch("subprocess.run")
+    def test_burn_subtitles_does_not_retry_when_gpu_is_forced(
+        self, mock_run, tmp_path
+    ):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="", stderr=""),
+            subprocess.CalledProcessError(
+                1,
+                "ffmpeg",
+                stderr="h264_nvenc failed: No capable devices found",
+            ),
+        ]
+        video_path = tmp_path / "sample.mp4"
+        srt_path = tmp_path / "sample.srt"
+        video_path.write_bytes(b"")
+        srt_path.write_text("", encoding="utf-8")
+
+        burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(1920, 1080))
+
+        with pytest.raises(RuntimeError) as exc_info:
+            burner.burn_subtitles(str(video_path), str(srt_path), use_gpu=True)
+
+        assert "Failed to burn subtitles" in str(exc_info.value)
+        assert len(mock_run.call_args_list) == 2
 
     @patch("subprocess.run")
     def test_style_flags_affect_subtitles_filter(self, mock_run, tmp_path):
@@ -458,6 +515,13 @@ class TestSubtitleBurner:
         assert burner.detect_gpu() is True
         assert burner.detect_gpu() is True
         mock_run.assert_called_once()
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("-i") + 1] == (
+            "color="
+            f"size={NVENC_PROBE_FRAME_SIZE}x{NVENC_PROBE_FRAME_SIZE}:"
+            "rate=1:color=black"
+        )
 
     def test_select_video_codec_raises_clear_error_when_gpu_forced_but_unavailable(self):
         burner = SubtitleBurner()
