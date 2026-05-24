@@ -29,6 +29,7 @@ dev = [
 
 [project.scripts]
 srt-maker = "srt_maker.cli:main"
+srt-burn = "srt_maker.burn_cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

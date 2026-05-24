@@ -2,6 +2,9 @@
 
 CLI tool to generate SRT subtitles from video audio using speech recognition.
 
+It also includes a dedicated command for burning an existing `.srt`
+file into an existing video.
+
 ## Features
 
 - Automatic speech recognition using OpenAI Whisper (local, offline)
@@ -124,6 +127,67 @@ srt-maker input.mp4 -l de -m small -d cuda \
   --similarity-threshold 0.72 \
   --repetition-window 20
 ```
+
+## Burned Subtitle Rendering
+
+Use `srt-burn` when you already have a video file and an external
+subtitle file and want a new video with the subtitles burned into the
+image.
+
+### Basic Usage
+
+```bash
+srt-burn video.mp4 subtitles.srt
+```
+
+This generates `video_subtitled.mp4` in the same directory.
+
+### Options
+
+```bash
+srt-burn video.mp4 subtitles.srt [OPTIONS]
+
+Options:
+  video_file                    Path to the input video file (required)
+  srt_file                      Path to the input SRT file (required)
+  -o, --output OUTPUT           Output video path
+                                (default: <video_name>_subtitled.<ext>)
+  --font-size N                 Burned subtitle font size
+  --bottom-margin N             Bottom margin for burned subtitles
+  --primary-color COLOR         Primary subtitle color in #RRGGBB
+                                or ASS &H... format
+  -v, --verbose                 Enable verbose logging
+  --help                        Show help message
+```
+
+### Examples
+
+Burn subtitles into a video while keeping the same container type:
+```bash
+srt-burn input.mkv input.srt
+```
+
+Write to a specific output path:
+```bash
+srt-burn input.mp4 input.srt -o output_with_subs.mp4
+```
+
+Apply basic subtitle styling:
+```bash
+srt-burn input.mp4 input.srt \
+  --font-size 26 \
+  --bottom-margin 32 \
+  --primary-color "#FFFFFF"
+```
+
+### Rendering Notes
+
+- The video stream is re-encoded because subtitle burning requires a
+  video filter.
+- Audio streams are copied when possible.
+- Existing subtitle streams are removed from the output to avoid
+  duplicate subtitles.
+- Metadata and other non-subtitle streams are preserved where practical.
 
 ## Development
 

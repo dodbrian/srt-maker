@@ -3,8 +3,6 @@ Test fixtures and configuration for srt_maker tests.
 """
 
 import pytest
-import os
-from pathlib import Path
 
 
 @pytest.fixture
