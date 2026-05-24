@@ -8,6 +8,28 @@ logger = logging.getLogger(__name__)
 COLOR_ERROR_MESSAGE = (
     "Primary color must be in #RRGGBB format or ASS &HAABBGGRR format"
 )
+NVENC_HQ_ARGS = [
+    "-preset",
+    "p6",
+    "-tune",
+    "hq",
+    "-rc",
+    "vbr",
+    "-cq",
+    "23",
+    "-b:v",
+    "8M",
+    "-maxrate",
+    "18M",
+    "-bufsize",
+    "36M",
+    "-spatial_aq",
+    "1",
+    "-temporal_aq",
+    "1",
+    "-aq-strength",
+    "8",
+]
 
 
 class SubtitleBurner:
@@ -76,7 +98,9 @@ class SubtitleBurner:
         primary_color: Optional[str] = None,
         use_gpu: bool = False,
     ) -> List[str]:
-        video_codec = self._select_video_codec(output_path, use_gpu=use_gpu)
+        video_encoding_args = self._build_video_encoding_args(
+            output_path, use_gpu=use_gpu
+        )
 
         return [
             self.ffmpeg_path,
@@ -97,14 +121,24 @@ class SubtitleBurner:
             "0",
             "-map_chapters",
             "0",
-            "-c:v",
-            video_codec,
+            *video_encoding_args,
             "-c:a",
             "copy",
             "-sn",
             "-y",
             output_path,
         ]
+
+    def _build_video_encoding_args(
+        self, output_path: str, use_gpu: bool = False
+    ) -> List[str]:
+        video_codec = self._select_video_codec(output_path, use_gpu=use_gpu)
+        encoding_args = ["-c:v", video_codec]
+
+        if video_codec == "h264_nvenc":
+            encoding_args.extend(NVENC_HQ_ARGS)
+
+        return encoding_args
 
     def _build_subtitles_filter(
         self,

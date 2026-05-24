@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srt_maker.subtitle_burner import SubtitleBurner
+from srt_maker.subtitle_burner import NVENC_HQ_ARGS, SubtitleBurner
 
 
 class TestSubtitleBurner:
@@ -107,6 +107,10 @@ class TestSubtitleBurner:
 
         cmd = mock_run.call_args[0][0]
         assert cmd[cmd.index("-c:v") + 1] == "h264_nvenc"
+        for index in range(0, len(NVENC_HQ_ARGS), 2):
+            flag = NVENC_HQ_ARGS[index]
+            value = NVENC_HQ_ARGS[index + 1]
+            assert cmd[cmd.index(flag) + 1] == value
 
     @patch("subprocess.run")
     def test_style_flags_affect_subtitles_filter(self, mock_run, tmp_path):
@@ -277,3 +281,10 @@ class TestSubtitleBurner:
             burner._select_video_codec("/tmp/output.mp4", use_gpu=True)
             == "h264_nvenc"
         )
+
+    def test_build_video_encoding_args_includes_nvenc_quality_defaults(self):
+        burner = SubtitleBurner()
+
+        assert burner._build_video_encoding_args(
+            "/tmp/output.mp4", use_gpu=True
+        ) == ["-c:v", "h264_nvenc", *NVENC_HQ_ARGS]
