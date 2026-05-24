@@ -63,6 +63,11 @@ def parse_args(argv=None):
         help="Primary subtitle color in #RRGGBB or ASS &H... format",
     )
     parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        help="Use NVIDIA NVENC for video encoding when supported",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose logging"
     )
 
@@ -89,6 +94,7 @@ def main() -> None:
             font_size=args.font_size,
             bottom_margin=args.bottom_margin,
             primary_color=args.primary_color,
+            use_gpu=args.use_gpu,
         )
         console.print(f"[green]✓ Subtitled video saved to: {output_path}[/green]")
     except (RuntimeError, ValueError) as error:

@@ -22,6 +22,7 @@ class SubtitleBurner:
         font_size: Optional[int] = None,
         bottom_margin: Optional[int] = None,
         primary_color: Optional[str] = None,
+        use_gpu: bool = False,
     ) -> str:
         source_video = Path(video_path)
         subtitle_file = Path(srt_path)
@@ -47,6 +48,7 @@ class SubtitleBurner:
             font_size=font_size,
             bottom_margin=bottom_margin,
             primary_color=primary_color,
+            use_gpu=use_gpu,
         )
 
         try:
@@ -72,8 +74,9 @@ class SubtitleBurner:
         font_size: Optional[int] = None,
         bottom_margin: Optional[int] = None,
         primary_color: Optional[str] = None,
+        use_gpu: bool = False,
     ) -> List[str]:
-        video_codec = self._select_video_codec(output_path)
+        video_codec = self._select_video_codec(output_path, use_gpu=use_gpu)
 
         return [
             self.ffmpeg_path,
@@ -156,7 +159,7 @@ class SubtitleBurner:
         if bottom_margin is not None and bottom_margin < 0:
             raise ValueError("Bottom margin must be zero or greater")
 
-    def _select_video_codec(self, output_path: str) -> str:
+    def _select_video_codec(self, output_path: str, use_gpu: bool = False) -> str:
         suffix = Path(output_path).suffix.lower()
 
         if suffix == ".webm":
@@ -164,6 +167,9 @@ class SubtitleBurner:
 
         if suffix in {".ogv", ".ogg"}:
             return "libtheora"
+
+        if use_gpu:
+            return "h264_nvenc"
 
         return "libx264"
 

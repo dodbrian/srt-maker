@@ -93,6 +93,22 @@ class TestSubtitleBurner:
         assert "-sn" in cmd
 
     @patch("subprocess.run")
+    def test_burn_subtitles_uses_nvenc_when_gpu_requested(
+        self, mock_run, tmp_path
+    ):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        video_path = tmp_path / "sample.mp4"
+        srt_path = tmp_path / "sample.srt"
+        video_path.write_bytes(b"")
+        srt_path.write_text("", encoding="utf-8")
+
+        burner = SubtitleBurner()
+        burner.burn_subtitles(str(video_path), str(srt_path), use_gpu=True)
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[cmd.index("-c:v") + 1] == "h264_nvenc"
+
+    @patch("subprocess.run")
     def test_style_flags_affect_subtitles_filter(self, mock_run, tmp_path):
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         video_path = tmp_path / "sample.mp4"
@@ -253,3 +269,11 @@ class TestSubtitleBurner:
         burner = SubtitleBurner()
 
         assert burner._select_video_codec("/tmp/output.ogv") == "libtheora"
+
+    def test_select_video_codec_uses_nvenc_when_gpu_requested(self):
+        burner = SubtitleBurner()
+
+        assert (
+            burner._select_video_codec("/tmp/output.mp4", use_gpu=True)
+            == "h264_nvenc"
+        )

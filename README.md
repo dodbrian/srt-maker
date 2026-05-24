@@ -156,6 +156,7 @@ Options:
   --bottom-margin N             Bottom margin for burned subtitles
   --primary-color COLOR         Primary subtitle color in #RRGGBB
                                 or ASS &H... format
+  --use-gpu                     Use NVIDIA NVENC for video encoding
   -v, --verbose                 Enable verbose logging
   --help                        Show help message
 ```
@@ -180,10 +181,17 @@ srt-burn input.mp4 input.srt \
   --primary-color "#FFFFFF"
 ```
 
+Use GPU encoding with NVIDIA NVENC:
+```bash
+srt-burn input.mp4 input.srt --use-gpu
+```
+
 ### Rendering Notes
 
 - The video stream is re-encoded because subtitle burning requires a
   video filter.
+- `--use-gpu` switches H.264 output to `h264_nvenc`, which requires an
+  NVIDIA GPU and an ffmpeg build with NVENC enabled.
 - Audio streams are copied when possible.
 - Existing subtitle streams are removed from the output to avoid
   duplicate subtitles.
