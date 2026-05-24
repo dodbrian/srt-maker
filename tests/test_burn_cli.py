@@ -15,7 +15,7 @@ class TestBurnCLI:
         assert args.font_size is None
         assert args.bottom_margin is None
         assert args.primary_color is None
-        assert args.use_gpu is False
+        assert args.use_gpu is None
         assert args.verbose is False
 
     def test_parse_args_with_options(self):
@@ -44,6 +44,11 @@ class TestBurnCLI:
         assert args.primary_color == "#FFFFFF"
         assert args.use_gpu is True
         assert args.verbose is True
+
+    def test_parse_args_with_no_gpu(self):
+        args = parse_args(["video.mp4", "subs.srt", "--no-gpu"])
+
+        assert args.use_gpu is False
 
     def test_help_message(self, capsys):
         with pytest.raises(SystemExit):
@@ -76,6 +81,13 @@ class TestBurnCLI:
         captured = capsys.readouterr()
         assert "zero or greater" in captured.err
 
+    def test_parse_args_rejects_conflicting_gpu_flags(self, capsys):
+        with pytest.raises(SystemExit):
+            parse_args(["video.mp4", "subs.srt", "--use-gpu", "--no-gpu"])
+
+        captured = capsys.readouterr()
+        assert "not allowed with argument" in captured.err
+
     @patch("srt_maker.burn_cli.SubtitleBurner")
     def test_main_success(self, mock_burner_class, capsys):
         mock_burner = MagicMock()
@@ -92,7 +104,7 @@ class TestBurnCLI:
             font_size=None,
             bottom_margin=None,
             primary_color=None,
-            use_gpu=False,
+            use_gpu=None,
         )
         captured = capsys.readouterr()
         assert "Subtitled video saved to: video_subtitled.mp4" in captured.out

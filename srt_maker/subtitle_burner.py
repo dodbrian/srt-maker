@@ -9,6 +9,12 @@ StyleValue = Union[int, str]
 COLOR_ERROR_MESSAGE = (
     "Primary color must be in #RRGGBB format or ASS &HAABBGGRR format"
 )
+GPU_REQUEST_ERROR_MESSAGE = (
+    "GPU encoding was requested, but NVIDIA NVENC is not available. "
+    "Install NVIDIA drivers and an ffmpeg build with NVENC support, "
+    "or omit --use-gpu."
+)
+GPU_DETECTION_TIMEOUT_SECONDS = 10
 NVENC_HQ_ARGS = [
     "-preset",
     "p6",
@@ -43,6 +49,7 @@ UHD_SUBTITLE_STYLE: Dict[str, StyleValue] = {
 class SubtitleBurner:
     def __init__(self, ffmpeg_path: Optional[str] = None):
         self.ffmpeg_path = ffmpeg_path or "ffmpeg"
+        self._gpu_available: Optional[bool] = None
 
     def burn_subtitles(
         self,
@@ -52,7 +59,7 @@ class SubtitleBurner:
         font_size: Optional[int] = None,
         bottom_margin: Optional[int] = None,
         primary_color: Optional[str] = None,
-        use_gpu: bool = False,
+        use_gpu: Optional[bool] = None,
     ) -> str:
         source_video = Path(video_path)
         subtitle_file = Path(srt_path)
@@ -104,7 +111,7 @@ class SubtitleBurner:
         font_size: Optional[int] = None,
         bottom_margin: Optional[int] = None,
         primary_color: Optional[str] = None,
-        use_gpu: bool = False,
+        use_gpu: Optional[bool] = None,
     ) -> List[str]:
         video_encoding_args = self._build_video_encoding_args(
             output_path, use_gpu=use_gpu
@@ -139,7 +146,7 @@ class SubtitleBurner:
         ]
 
     def _build_video_encoding_args(
-        self, output_path: str, use_gpu: bool = False
+        self, output_path: str, use_gpu: Optional[bool] = None
     ) -> List[str]:
         video_codec = self._select_video_codec(output_path, use_gpu=use_gpu)
         encoding_args = ["-c:v", video_codec]
@@ -268,7 +275,9 @@ class SubtitleBurner:
         if bottom_margin is not None and bottom_margin < 0:
             raise ValueError("Bottom margin must be zero or greater")
 
-    def _select_video_codec(self, output_path: str, use_gpu: bool = False) -> str:
+    def _select_video_codec(
+        self, output_path: str, use_gpu: Optional[bool] = None
+    ) -> str:
         suffix = Path(output_path).suffix.lower()
 
         if suffix == ".webm":
@@ -277,10 +286,66 @@ class SubtitleBurner:
         if suffix in {".ogv", ".ogg"}:
             return "libtheora"
 
+        use_gpu = self._resolve_gpu_usage(use_gpu)
+
         if use_gpu:
             return "h264_nvenc"
 
         return "libx264"
+
+    def _resolve_gpu_usage(self, use_gpu: Optional[bool]) -> bool:
+        if use_gpu is False:
+            return False
+
+        gpu_available = self.detect_gpu()
+        if use_gpu is True and not gpu_available:
+            raise RuntimeError(GPU_REQUEST_ERROR_MESSAGE)
+
+        return gpu_available
+
+    def detect_gpu(self) -> bool:
+        if self._gpu_available is not None:
+            return self._gpu_available
+
+        cmd = [
+            self.ffmpeg_path,
+            "-hide_banner",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=size=128x128:rate=1:color=black",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "h264_nvenc",
+            "-f",
+            "null",
+            "-",
+        ]
+
+        try:
+            subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=GPU_DETECTION_TIMEOUT_SECONDS,
+            )
+            self._gpu_available = True
+        except FileNotFoundError:
+            logger.warning("ffmpeg not found while detecting NVENC support")
+            self._gpu_available = False
+        except subprocess.TimeoutExpired:
+            logger.warning("Timed out while detecting NVENC support")
+            self._gpu_available = False
+        except subprocess.CalledProcessError as error:
+            logger.info(
+                "NVENC not available, falling back to CPU encoding: %s",
+                error.stderr.strip() or error,
+            )
+            self._gpu_available = False
+
+        return self._gpu_available
 
     def _escape_filter_path(self, path: str) -> str:
         return (

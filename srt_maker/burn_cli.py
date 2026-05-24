@@ -62,10 +62,18 @@ def parse_args(argv=None):
         default=None,
         help="Primary subtitle color in #RRGGBB or ASS &H... format",
     )
-    parser.add_argument(
+    gpu_group = parser.add_mutually_exclusive_group()
+    gpu_group.add_argument(
         "--use-gpu",
         action="store_true",
-        help="Use NVIDIA NVENC for video encoding when supported",
+        default=None,
+        help="Force NVIDIA NVENC for video encoding",
+    )
+    gpu_group.add_argument(
+        "--no-gpu",
+        action="store_false",
+        dest="use_gpu",
+        help="Disable GPU detection and use CPU encoding",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose logging"

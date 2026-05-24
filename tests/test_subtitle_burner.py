@@ -4,13 +4,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srt_maker.subtitle_burner import NVENC_HQ_ARGS, SubtitleBurner
+from srt_maker.subtitle_burner import (
+    GPU_REQUEST_ERROR_MESSAGE,
+    NVENC_HQ_ARGS,
+    SubtitleBurner,
+)
 
 
 class TestSubtitleBurner:
     @patch("subprocess.run")
     def test_burn_subtitles_success_with_default_output(self, mock_run, tmp_path):
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.side_effect = [
+            subprocess.CalledProcessError(
+                1, "ffmpeg", stderr="Unknown encoder 'h264_nvenc'"
+            ),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
         video_path = tmp_path / "sample.mp4"
         srt_path = tmp_path / "sample.srt"
         video_path.write_bytes(b"")
@@ -22,7 +31,7 @@ class TestSubtitleBurner:
         output_path = burner.burn_subtitles(str(video_path), str(srt_path))
 
         assert output_path == str(tmp_path / "sample_subtitled.mp4")
-        mock_run.assert_called_once()
+        assert len(mock_run.call_args_list) == 2
 
     def test_burn_subtitles_missing_video_raises_value_error(self, tmp_path):
         srt_path = tmp_path / "sample.srt"
@@ -70,7 +79,12 @@ class TestSubtitleBurner:
     def test_burn_subtitles_builds_expected_ffmpeg_command(
         self, mock_run, tmp_path
     ):
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.side_effect = [
+            subprocess.CalledProcessError(
+                1, "ffmpeg", stderr="Unknown encoder 'h264_nvenc'"
+            ),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
         video_path = tmp_path / "sample.mp4"
         srt_path = tmp_path / "sample.srt"
         video_path.write_bytes(b"")
@@ -121,6 +135,53 @@ class TestSubtitleBurner:
             flag = NVENC_HQ_ARGS[index]
             value = NVENC_HQ_ARGS[index + 1]
             assert cmd[cmd.index(flag) + 1] == value
+
+    @patch("subprocess.run")
+    def test_burn_subtitles_auto_detects_nvenc_when_available(
+        self, mock_run, tmp_path
+    ):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        video_path = tmp_path / "sample.mp4"
+        srt_path = tmp_path / "sample.srt"
+        video_path.write_bytes(b"")
+        srt_path.write_text("", encoding="utf-8")
+
+        burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(1920, 1080))
+        burner.burn_subtitles(str(video_path), str(srt_path))
+
+        assert len(mock_run.call_args_list) == 2
+        detect_cmd = mock_run.call_args_list[0][0][0]
+        burn_cmd = mock_run.call_args_list[1][0][0]
+        assert detect_cmd[0] == "ffmpeg"
+        assert detect_cmd[detect_cmd.index("-c:v") + 1] == "h264_nvenc"
+        assert burn_cmd[burn_cmd.index("-c:v") + 1] == "h264_nvenc"
+
+    @patch("subprocess.run")
+    def test_burn_subtitles_falls_back_to_cpu_when_nvenc_unavailable(
+        self, mock_run, tmp_path
+    ):
+        mock_run.side_effect = [
+            subprocess.CalledProcessError(
+                1, "ffmpeg", stderr="Unknown encoder 'h264_nvenc'"
+            ),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        video_path = tmp_path / "sample.mp4"
+        srt_path = tmp_path / "sample.srt"
+        video_path.write_bytes(b"")
+        srt_path.write_text("", encoding="utf-8")
+
+        burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(1920, 1080))
+        burner.burn_subtitles(str(video_path), str(srt_path))
+
+        assert len(mock_run.call_args_list) == 2
+        burn_cmd = mock_run.call_args_list[1][0][0]
+        assert burn_cmd[burn_cmd.index("-c:v") + 1] == "libx264"
 
     @patch("subprocess.run")
     def test_style_flags_affect_subtitles_filter(self, mock_run, tmp_path):
@@ -353,15 +414,63 @@ class TestSubtitleBurner:
 
     def test_select_video_codec_uses_nvenc_when_gpu_requested(self):
         burner = SubtitleBurner()
+        burner.detect_gpu = MagicMock(return_value=True)
 
         assert (
             burner._select_video_codec("/tmp/output.mp4", use_gpu=True)
             == "h264_nvenc"
         )
 
+    def test_select_video_codec_uses_cpu_when_gpu_disabled(self):
+        burner = SubtitleBurner()
+        burner.detect_gpu = MagicMock()
+
+        assert burner._select_video_codec("/tmp/output.mp4", use_gpu=False) == "libx264"
+        burner.detect_gpu.assert_not_called()
+
+    def test_select_video_codec_auto_detects_gpu_when_not_explicit(self):
+        burner = SubtitleBurner()
+        burner.detect_gpu = MagicMock(return_value=True)
+
+        assert burner._select_video_codec("/tmp/output.mp4") == "h264_nvenc"
+        burner.detect_gpu.assert_called_once_with()
+
+    def test_select_video_codec_auto_detects_cpu_when_gpu_unavailable(self):
+        burner = SubtitleBurner()
+        burner.detect_gpu = MagicMock(return_value=False)
+
+        assert burner._select_video_codec("/tmp/output.mp4") == "libx264"
+        burner.detect_gpu.assert_called_once_with()
+
     def test_build_video_encoding_args_includes_nvenc_quality_defaults(self):
         burner = SubtitleBurner()
+        burner.detect_gpu = MagicMock(return_value=True)
 
         assert burner._build_video_encoding_args(
             "/tmp/output.mp4", use_gpu=True
         ) == ["-c:v", "h264_nvenc", *NVENC_HQ_ARGS]
+
+    @patch("subprocess.run")
+    def test_detect_gpu_caches_successful_probe(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        burner = SubtitleBurner()
+
+        assert burner.detect_gpu() is True
+        assert burner.detect_gpu() is True
+        mock_run.assert_called_once()
+
+    def test_select_video_codec_raises_clear_error_when_gpu_forced_but_unavailable(self):
+        burner = SubtitleBurner()
+        burner.detect_gpu = MagicMock(return_value=False)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            burner._select_video_codec("/tmp/output.mp4", use_gpu=True)
+
+        assert str(exc_info.value) == GPU_REQUEST_ERROR_MESSAGE
+
+    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired("ffmpeg", 10))
+    def test_detect_gpu_returns_false_after_timeout(self, mock_run):
+        burner = SubtitleBurner()
+
+        assert burner.detect_gpu() is False
+        mock_run.assert_called_once()
