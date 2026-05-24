@@ -188,6 +188,8 @@ srt-burn input.mp4 input.srt --use-gpu
 
 ### Rendering Notes
 
+- UHD and 4K sources use an explicit bottom-centered default subtitle
+  style even when no styling flags are passed.
 - The video stream is re-encoded because subtitle burning requires a
   video filter.
 - `--use-gpu` switches H.264 output to `h264_nvenc`, which requires an

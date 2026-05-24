@@ -17,6 +17,7 @@ class TestSubtitleBurner:
         srt_path.write_text("", encoding="utf-8")
 
         burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(1920, 1080))
 
         output_path = burner.burn_subtitles(str(video_path), str(srt_path))
 
@@ -55,6 +56,7 @@ class TestSubtitleBurner:
         srt_path.write_text("", encoding="utf-8")
 
         burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(1920, 1080))
 
         result = burner.burn_subtitles(
             str(video_path), str(srt_path), output_path=str(output_path)
@@ -75,6 +77,7 @@ class TestSubtitleBurner:
         srt_path.write_text("", encoding="utf-8")
 
         burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(3840, 2160))
         burner.burn_subtitles(str(video_path), str(srt_path))
 
         cmd = mock_run.call_args[0][0]
@@ -83,6 +86,12 @@ class TestSubtitleBurner:
         assert cmd[0] == "ffmpeg"
         assert cmd[1:3] == ["-i", str(video_path)]
         assert "subtitles='" in filter_value
+        assert "force_style='" in filter_value
+        assert "FontSize=14" in filter_value
+        assert "MarginV=120" in filter_value
+        assert "Outline=2" in filter_value
+        assert "Shadow=0" in filter_value
+        assert "Alignment=2" in filter_value
         assert "sample.srt" in filter_value
         assert cmd[cmd.index("-map") + 1] == "0:v:0"
         assert "0:a?" in cmd
@@ -103,6 +112,7 @@ class TestSubtitleBurner:
         srt_path.write_text("", encoding="utf-8")
 
         burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(1920, 1080))
         burner.burn_subtitles(str(video_path), str(srt_path), use_gpu=True)
 
         cmd = mock_run.call_args[0][0]
@@ -121,6 +131,7 @@ class TestSubtitleBurner:
         srt_path.write_text("", encoding="utf-8")
 
         burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(3840, 2160))
         burner.burn_subtitles(
             str(video_path),
             str(srt_path),
@@ -135,15 +146,81 @@ class TestSubtitleBurner:
         assert "force_style='" in filter_value
         assert "FontSize=28" in filter_value
         assert "MarginV=36" in filter_value
+        assert "Outline=2" in filter_value
+        assert "Shadow=0" in filter_value
+        assert "Alignment=2" in filter_value
         assert "PrimaryColour=&H00332211" in filter_value
 
-    def test_build_subtitles_filter_without_styles(self):
+    def test_build_subtitles_filter_uses_default_uhd_style(self):
+        burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(3840, 2160))
+
+        filter_value = burner._build_subtitles_filter(
+            "/tmp/subtitles.srt",
+            video_path="/tmp/video_uhd.mp4",
+        )
+
+        assert filter_value.startswith("subtitles='")
+        assert "force_style='" in filter_value
+        assert "FontSize=14" in filter_value
+        assert "MarginV=120" in filter_value
+        assert "Outline=2" in filter_value
+        assert "Shadow=0" in filter_value
+        assert "Alignment=2" in filter_value
+
+    def test_build_subtitles_filter_without_styles_for_non_uhd_video(self):
+        burner = SubtitleBurner()
+        burner._probe_video_dimensions = MagicMock(return_value=(1920, 1080))
+
+        filter_value = burner._build_subtitles_filter(
+            "/tmp/subtitles.srt",
+            video_path="/tmp/video_hd.mp4",
+        )
+
+        assert filter_value.startswith("subtitles='")
+        assert "force_style" not in filter_value
+
+    @patch("subprocess.run")
+    def test_default_style_for_video_uses_uhd_preset_for_4k_input(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="3840x2160\n",
+            stderr="",
+        )
         burner = SubtitleBurner()
 
-        filter_value = burner._build_subtitles_filter("/tmp/subtitles.srt")
+        style = burner._default_style_for_video("/tmp/video.mp4")
 
-        assert "force_style" not in filter_value
-        assert filter_value.startswith("subtitles='")
+        assert style == {
+            "FontSize": 14,
+            "MarginV": 120,
+            "Outline": 2,
+            "Shadow": 0,
+            "Alignment": 2,
+        }
+
+    @patch("subprocess.run")
+    def test_default_style_for_video_skips_preset_for_hd_input(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="1920x1080\n",
+            stderr="",
+        )
+        burner = SubtitleBurner()
+
+        style = burner._default_style_for_video("/tmp/video.mp4")
+
+        assert style == {}
+
+    def test_ffprobe_path_uses_sibling_binary_for_custom_ffmpeg_path(self):
+        burner = SubtitleBurner(ffmpeg_path="/custom/bin/ffmpeg")
+
+        assert burner._ffprobe_path() == "/custom/bin/ffprobe"
+
+    def test_ffprobe_path_preserves_executable_suffix(self):
+        burner = SubtitleBurner(ffmpeg_path="C:/ffmpeg/bin/ffmpeg.exe")
+
+        assert burner._ffprobe_path() == "C:/ffmpeg/bin/ffprobe.exe"
 
     def test_normalize_ass_color_accepts_ass_format(self):
         burner = SubtitleBurner()

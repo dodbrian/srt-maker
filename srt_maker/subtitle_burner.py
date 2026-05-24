@@ -1,9 +1,10 @@
 import logging
 import subprocess
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
+StyleValue = Union[int, str]
 
 COLOR_ERROR_MESSAGE = (
     "Primary color must be in #RRGGBB format or ASS &HAABBGGRR format"
@@ -30,6 +31,13 @@ NVENC_HQ_ARGS = [
     "-aq-strength",
     "8",
 ]
+UHD_SUBTITLE_STYLE: Dict[str, StyleValue] = {
+    "FontSize": 14,
+    "MarginV": 120,
+    "Outline": 2,
+    "Shadow": 0,
+    "Alignment": 2,
+}
 
 
 class SubtitleBurner:
@@ -109,6 +117,7 @@ class SubtitleBurner:
             "-vf",
             self._build_subtitles_filter(
                 srt_path=srt_path,
+                video_path=video_path,
                 font_size=font_size,
                 bottom_margin=bottom_margin,
                 primary_color=primary_color,
@@ -143,30 +152,96 @@ class SubtitleBurner:
     def _build_subtitles_filter(
         self,
         srt_path: str,
+        video_path: Optional[str] = None,
         font_size: Optional[int] = None,
         bottom_margin: Optional[int] = None,
         primary_color: Optional[str] = None,
     ) -> str:
         escaped_path = self._escape_filter_path(srt_path)
-        style_parts = []
+        styles = self._default_style_for_video(video_path)
 
         if font_size is not None:
-            style_parts.append(f"FontSize={font_size}")
+            styles["FontSize"] = font_size
 
         if bottom_margin is not None:
-            style_parts.append(f"MarginV={bottom_margin}")
+            styles["MarginV"] = bottom_margin
 
         if primary_color is not None:
-            style_parts.append(
-                f"PrimaryColour={self._normalize_ass_color(primary_color)}"
-            )
+            styles["PrimaryColour"] = self._normalize_ass_color(primary_color)
 
         filter_value = f"subtitles='{escaped_path}'"
-        if style_parts:
-            style = ",".join(style_parts)
+        if styles:
+            style = ",".join(f"{name}={value}" for name, value in styles.items())
             filter_value += f":force_style='{style}'"
 
         return filter_value
+
+    def _default_style_for_video(
+        self, video_path: Optional[str]
+    ) -> Dict[str, StyleValue]:
+        if video_path is None:
+            return {}
+
+        dimensions = self._probe_video_dimensions(video_path)
+        if dimensions is None:
+            return {}
+
+        width, height = dimensions
+        if width >= 3840 or height >= 2160:
+            return UHD_SUBTITLE_STYLE.copy()
+
+        return {}
+
+    def _probe_video_dimensions(
+        self, video_path: str
+    ) -> Optional[Tuple[int, int]]:
+        ffprobe_path = self._ffprobe_path()
+        cmd = [
+            ffprobe_path,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=s=x:p=0",
+            video_path,
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError) as error:
+            logger.warning(f"Could not detect video dimensions with ffprobe: {error}")
+            return None
+
+        dimensions = result.stdout.strip()
+        if not dimensions:
+            return None
+
+        try:
+            width_text, height_text = dimensions.split("x", maxsplit=1)
+            return int(width_text), int(height_text)
+        except ValueError:
+            logger.warning(f"Unexpected ffprobe dimension output: {dimensions}")
+            return None
+
+    def _ffprobe_path(self) -> str:
+        ffmpeg_path = Path(self.ffmpeg_path)
+        ffmpeg_name = ffmpeg_path.name
+        if ffmpeg_name.startswith("ffmpeg"):
+            ffprobe_name = f"ffprobe{ffmpeg_path.suffix}"
+            if ffmpeg_path.parent != Path(".") or ffmpeg_path.suffix:
+                return str(ffmpeg_path.with_name(ffprobe_name))
+
+            return ffprobe_name
+
+        return "ffprobe"
 
     def _default_output_path(self, video_path: Path) -> Path:
         return video_path.with_name(f"{video_path.stem}_subtitled{video_path.suffix}")
